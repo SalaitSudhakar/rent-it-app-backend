@@ -2,3 +2,6 @@
 .env.production
 
 node_modules/
+
+info.md
+security-plan.md

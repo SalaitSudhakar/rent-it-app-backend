@@ -1,6 +1,6 @@
 # 🏗️ Product Rental App — Full Project Blueprint
 
-> **Stack:** MERN (MongoDB, Express, React, Node.js) + Stripe + JWT + Google OAuth  
+> **Stack:** MERN (MongoDB, Express, React, Node.js) + Stripe + JWT  
 > **Purpose:** Portfolio project to demonstrate full stack skills  
 > **Roles:** Customer | Owner | Admin
 
@@ -26,7 +26,7 @@ A general marketplace rental platform where owners list items for rent, customer
 
 **Key Features:**
 
-- 3-role authentication (JWT + Google OAuth + Refresh Tokens)
+- 3-role authentication (JWT + Refresh Tokens)
 - Item listings with flexible pricing (per hour / day / week)
 - Rental booking with owner approval flow
 - Stripe payments with deposit hold/release
@@ -44,7 +44,7 @@ A general marketplace rental platform where owners list items for rent, customer
 
 ### Customer
 
-- Register / Login (JWT or Google OAuth)
+- Register / Login (JWT)
 - Browse, search, filter listings
 - Request a rental (select dates + handover method)
 - Pay rental fee + security deposit via Stripe
@@ -53,7 +53,7 @@ A general marketplace rental platform where owners list items for rent, customer
 
 ### Owner
 
-- Register / Login (JWT or Google OAuth)
+- Register / Login (JWT)
 - Create, edit, delete listings (pricing per hour/day/week)
 - Set delivery availability + delivery fee
 - Approve or reject rental requests
@@ -261,8 +261,6 @@ users
 │   └── country             (String)
 ├── isActive                (Boolean, default: true)
 ├── lastLoginAt             (Date)
-├── googleId                (String, nullable)
-├── isGoogleUser            (Boolean, default: false)
 ├── refreshToken            (String, nullable — cleared on logout)
 ├── isVerifiedOwner         (Boolean, default: false — admin approves)
 ├── stripeConnectAccountId  (String, nullable — owners only)
@@ -274,7 +272,7 @@ users
 **Key Notes:**
 
 - Single collection for all 3 roles — `role` field separates them
-- `password` nullable because Google OAuth users have no password
+- `password` required for all users — no Google OAuth
 - `refreshToken` stored here — set to null on logout to invalidate session
 - Owner-only fields are null/undefined for customers and admins
 - `averageRating` is denormalized — recalculate on every new review
@@ -308,7 +306,7 @@ listings
 │
 ├── title               (String, required)
 ├── description         (String, required)
-├── photos              (Array of Strings — image URLs)
+├── photos              (Array of Strings — Cloudinary image URLs)
 ├── condition           (Enum: "new", "good", "fair")
 │
 ├── location
@@ -345,6 +343,7 @@ listings
 - `adminNote` tells owner why their listing was rejected/suspended
 - `averageRating` is denormalized — recalculate on every new review
 - `isDeliveryAvailable` allows frontend to show "Delivery Available" badge
+- `photos` stores Cloudinary URLs — files are never stored on the server
 
 ---
 
@@ -378,7 +377,7 @@ rentals
 ├── isReviewed          (Boolean, default: false)
 │
 ├── damageDescription       (String, nullable)
-├── damagePhotos            (Array of Strings — image URLs)
+├── damagePhotos            (Array of Strings — Cloudinary image URLs)
 ├── damageAmountProposed    (Number, nullable — owner sets)
 ├── damageAmountApproved    (Number, nullable — admin sets)
 │
@@ -452,7 +451,7 @@ reviews
 │
 ├── rating          (Number, min: 1, max: 5, required)
 ├── comment         (String, required)
-├── photos          (Array of Strings — image URLs)
+├── photos          (Array of Strings — Cloudinary image URLs)
 │
 └── timestamps      (createdAt, updatedAt)
 ```
@@ -547,9 +546,21 @@ categories
 - Initialize Node.js + Express backend
 - Initialize React frontend (Vite)
 - Setup folder structure (MVC pattern)
-- Configure `.env` variables (MongoDB URI, JWT secrets, Stripe keys, Google OAuth)
-- Connect MongoDB via Mongoose
-- Setup CORS, body-parser, error handler middleware
+- Configure `.env.development` and `.env.example` files
+- Connect MongoDB via Mongoose (`config/databaseConfig.js`)
+- Setup modular config files:
+  - `config/envConfig.js` — loads correct `.env` per environment, exports `envMode`
+  - `config/corsConfig.js` — CORS options built from `CLIENT_URL` env var
+  - `config/rateLimitConfig.js` — global rate limiter (100 req / 15 min)
+- Setup environment variable validation on startup (`validators/validateEnvVariables.js`)
+  - Crashes server intentionally if any required key is missing
+- Register global middleware in `server.js` in this exact order:
+  1. `helmet()` — HTTP security headers
+  2. `cors(corsOptions)` — origin whitelist with credentials
+  3. `globalRateLimiter` — throttle all routes
+  4. `express.json()` — parse request body
+  5. `cookieParser()` — parse cookies (required for HttpOnly refresh token)
+  6. `mongoSanitize()` — strip `$` operators after body is parsed
 
 ### Phase 2 — Database Models
 
@@ -558,13 +569,13 @@ categories
 
 ### Phase 3 — Authentication APIs
 
-- POST `/auth/register` — hash password, create user, return tokens
+- POST `/auth/register` — validate input, hash password, create user, return tokens
 - POST `/auth/login` — verify password, return access + refresh tokens
-- POST `/auth/refresh` — validate refresh token, return new access token
-- POST `/auth/logout` — clear refresh token from DB
-- GET `/auth/google` — Google OAuth flow with Passport.js
-- Auth middleware — verify JWT, attach user to request
+- POST `/auth/refresh` — validate refresh token, rotate token, return new access token
+- POST `/auth/logout` — clear refresh token from DB and cookie
+- Auth middleware — verify JWT access token, attach user to request
 - Role guard middleware — `allowRoles("admin")`, `allowRoles("owner")` etc.
+- Strict rate limiter on `/auth/login` and `/auth/register` (10 req / 15 min)
 
 ### Phase 4 — Categories & Listings
 
@@ -572,9 +583,13 @@ categories
 - POST `/listings` — owner creates listing (status: pending)
 - GET `/listings` — public browse with filters (category, price, availability dates)
 - GET `/listings/:id` — single listing detail
-- PATCH `/listings/:id` — owner edits their listing
-- DELETE `/listings/:id` — owner deletes listing
+- PATCH `/listings/:id` — owner edits their listing (IDOR check: owner only)
+- DELETE `/listings/:id` — owner deletes listing (IDOR check: owner only)
 - PATCH `/listings/:id/status` — admin approves/rejects/suspends
+- File upload via `multer` + `Cloudinary`:
+  - Accept images only (jpeg, jpg, png, webp)
+  - Max size: 5MB per file, max 10 files per request
+  - Files uploaded to Cloudinary — URL stored in MongoDB, never store on server
 
 ### Phase 5 — Rental Booking Flow
 
@@ -583,7 +598,7 @@ categories
 - PATCH `/rentals/:id/reject` — owner rejects
 - PATCH `/rentals/:id/return` — owner marks item returned
 - GET `/rentals` — list rentals (filtered by role)
-- GET `/rentals/:id` — single rental detail
+- GET `/rentals/:id` — single rental detail (IDOR check: customer or owner only)
 
 ### Phase 6 — Stripe Integration
 
@@ -591,6 +606,8 @@ categories
 - Payment Intent for rental amount
 - Manual capture Payment Intent for security deposit
 - Stripe webhook handler (payment success, transfer events)
+  - Webhook route registered before `express.json()` using `express.raw()`
+  - Every webhook verified with `stripe.webhooks.constructEvent()`
 - Owner payout via Stripe Connect Transfer
 - Commission deduction logic
 - Deposit release (cancel Payment Intent)
@@ -637,20 +654,26 @@ categories
 
 ## 📌 Key Technical Concepts to Know
 
-| Concept                     | Where It's Used                       |
-| --------------------------- | ------------------------------------- |
-| JWT access + refresh tokens | Auth flow                             |
-| bcrypt                      | Password hashing                      |
-| Passport.js                 | Google OAuth                          |
-| Stripe Payment Intents      | Rental payment                        |
-| `capture_method: manual`    | Deposit hold                          |
-| Stripe Connect + Transfers  | Owner payouts                         |
-| Denormalization             | averageRating on users + listings     |
-| Price snapshot              | Rental booking — freeze prices        |
-| node-cron                   | Notification archiving background job |
-| Role-based middleware       | Protecting routes per role            |
-| blockedDates array          | Listing availability tracking         |
-| updateMany                  | Mark all notifications as read        |
+| Concept                     | Where It's Used                                 |
+| --------------------------- | ----------------------------------------------- |
+| JWT access + refresh tokens | Auth flow                                       |
+| bcrypt                      | Password hashing                                |
+| Refresh token rotation      | Detects stolen tokens, forces logout on reuse   |
+| IDOR protection             | Ownership check on every findById route         |
+| Stripe Payment Intents      | Rental payment                                  |
+| `capture_method: manual`    | Deposit hold                                    |
+| Stripe Connect + Transfers  | Owner payouts                                   |
+| Stripe webhook verification | Prevents spoofed payment events                 |
+| Cloudinary                  | File storage — images uploaded here, URL in DB  |
+| multer                      | File upload middleware — type + size validation |
+| Denormalization             | averageRating on users + listings               |
+| Price snapshot              | Rental booking — freeze prices at booking time  |
+| node-cron                   | Notification archiving background job           |
+| Role-based middleware       | Protecting routes per role                      |
+| blockedDates array          | Listing availability tracking                   |
+| updateMany                  | Mark all notifications as read                  |
+| express-mongo-sanitize      | Strips MongoDB operators from request body      |
+| helmet                      | Sets secure HTTP headers automatically          |
 
 ---
 

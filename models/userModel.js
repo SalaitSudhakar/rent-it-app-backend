@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import bcrypt from "bcrypt";
 
 const userSchema = new mongoose.Schema(
   {
@@ -17,84 +18,95 @@ const userSchema = new mongoose.Schema(
 
     password: {
       type: String,
-      trim: true,
-      default: null,
     },
 
     phone: {
-        type: String,
-        trim: true,
+      type: String,
+      trim: true,
     },
 
     profilePhoto: {
-        type: String,
-        time: true,
+      type: String,
+      trim: true,
     },
 
     role: {
-        type: String,
-        enum: ["customer", "owner", "admin"],
-        lowercase: true,
-        trim: true,
+      type: String,
+      enum: ["customer", "owner", "admin"],
+      lowercase: true,
+      trim: true,
+      default: "customer",
     },
 
     address: {
-        street: {
-            type: String,
-            lowercase: true,
-            trim: true
-        },
-        city: {
-            type: String,
-            lowercase: true,
-            trim: true
-        },
-        state: {
-            type: String,
-            lowercase: true,
-            trim: true
-        },
-        pincode: {
-            type: String,
-            lowercase: true,
-            trim: true
-        },
-        country: {
-            type: String,
-            lowercase: true,
-            trim: true
-        },
+      street: {
+        type: String,
+        trim: true,
+      },
+      city: {
+        type: String,
+        trim: true,
+      },
+      state: {
+        type: String,
+        trim: true,
+      },
+      pincode: {
+        type: String,
+        trim: true,
+      },
+      country: {
+        type: String,
+        trim: true,
+      },
     },
 
     isActive: {
-        type: Boolean,
-        default: true
+      type: Boolean,
+      default: true,
     },
 
     lastLoginAt: {
-        type: Date,
-    },
-
-    googleId: {
-        type: String,
-        default: null,
-    },
-
-
-    isGoogleUser: {
-        type: String, 
-        default: null,
+      type: Date,
     },
 
     refreshToken: {
-        type: String,
-        default: false,
-    }, 
+      type: String,
+      default: null,
+      select: false, // don't fetch this token by default (exclude from all queries)
+    },
 
-    
+    isVerifiedOwner: {
+      type: Boolean,
+      default: false,
+    },
+
+    stripeConnectedAccountId: {
+      type: String,
+      default: null,
+    },
+
+    averageRating: {
+      type: Number,
+      default: 0,
+    },
+
+    totalEarnings: {
+      type: Number,
+      default: 0,
+    },
   },
   { timestamps: true },
 );
+
+//  pre-hook runs every time .save() called
+userSchema.pre("save", async function (next) {
+  if (this.isModified("password")) {
+    const hashedPassword = await bcrypt.hash(this.password, 10);
+    this.password = hashedPassword;
+  }
+  next();
+});
 
 const userModel = mongoose.model("User", userSchema);
 

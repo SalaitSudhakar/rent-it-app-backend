@@ -1,5 +1,12 @@
 // Allow cross-origin requests (API use-case).
 // 1. Define CORS options
+
+// const allowedOrigins = ["http://localhost:5173"];
+
+// if (process.env.CLIENT_URL) {
+//   allowedOrigins.push(process.env.CLIENT_URL);
+// }
+
 const corsOptions = {
   // Take the URL from .env, or default to a safe local one
   origin: process.env.CLIENT_URL || "http://localhost:5173",

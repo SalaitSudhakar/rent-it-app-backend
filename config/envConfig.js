@@ -1,5 +1,6 @@
 import dotenv from "dotenv";
 import path from "path";
+import validateEnvVariables from "../validators/validateEnvVariables.js";
 
 // Environment mode: development, production, test, etc.
 // Default to development when NODE_ENV is absent.
@@ -14,5 +15,7 @@ if (envMode !== "production") {
     debug: envMode !== "production", // Log dotenv activity in non-production.
   });
 }
+
+validateEnvVariables();
 
 export { envMode };

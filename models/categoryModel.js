@@ -8,7 +8,6 @@ const categorySchema = new mongoose.Schema(
       unique: true,
       lowercase: true, // automatically converts to lowercase (use this to avoid duplicates (eg. Electronics, electronics))
       trim: true,
-      index: true;
     },
 
     icon: {

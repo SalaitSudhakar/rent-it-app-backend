@@ -27,6 +27,7 @@ A general marketplace rental platform where owners list items for rent, customer
 **Key Features:**
 
 - 3-role authentication (JWT + Refresh Tokens)
+- Forgot password via email OTP (nodemailer + bcrypt hashed OTP)
 - Item listings with flexible pricing (per hour / day / week)
 - Rental booking with owner approval flow
 - Stripe payments with deposit hold/release
@@ -168,6 +169,33 @@ owner.averageRating recalculated
 isReviewed flag set to true on rental (prevents duplicate)
 ```
 
+### Flow 8 — Forgot Password (OTP)
+
+```
+User clicks "Forgot Password" on frontend
+        ↓
+POST /auth/forgot-password → user submits email
+        ↓
+Backend finds user by email → not found → 404
+        ↓
+Generate 6-digit OTP
+Hash OTP with bcrypt before saving
+Save hashed OTP + expiry (now + 10 minutes) to user document
+        ↓
+Send plain OTP to user's email via nodemailer
+        ↓
+POST /auth/reset-password → user submits email + OTP + new password
+        ↓
+Find user by email
+Is OTP expired? → Date.now() > passwordResetOTPExpiry → 400
+bcrypt.compare(submittedOTP, user.passwordResetOTP) → no match → 400
+        ↓
+Update password → pre-save hook hashes it automatically
+Clear OTP fields → set all three to null/false
+        ↓
+Return 200 → "Password reset successful"
+```
+
 ---
 
 ## 🚦 Rental Status Lifecycle
@@ -249,10 +277,10 @@ Owner earning:      $900  → transferred via Stripe Connect
 users
 ├── name                    (String, required)
 ├── email                   (String, required, unique)
-├── password                (String, hashed, nullable for Google users)
+├── password                (String, required, hashed)
 ├── phone                   (String)
 ├── profilePhoto            (String, URL)
-├── role                    (Enum: "customer", "owner", "admin")
+├── role                    (Enum: "customer", "owner", "admin", default: "customer")
 ├── address                 (Object — owner and customer only)
 │   ├── street              (String)
 │   ├── city                (String)
@@ -261,11 +289,14 @@ users
 │   └── country             (String)
 ├── isActive                (Boolean, default: true)
 ├── lastLoginAt             (Date)
-├── refreshToken            (String, nullable — cleared on logout)
+├── refreshToken            (String, nullable — cleared on logout, select: false)
 ├── isVerifiedOwner         (Boolean, default: false — admin approves)
 ├── stripeConnectAccountId  (String, nullable — owners only)
 ├── averageRating           (Number, default: 0 — owners only)
 ├── totalEarnings           (Number, default: 0 — owners only)
+├── passwordResetOTP        (String, nullable — bcrypt hashed OTP, select: false)
+├── passwordResetOTPExpiry  (Date, nullable — OTP expires after 10 minutes)
+├── passwordResetVerified   (Boolean, default: false — true after OTP verified)
 └── timestamps              (createdAt, updatedAt — Mongoose auto)
 ```
 
@@ -273,9 +304,12 @@ users
 
 - Single collection for all 3 roles — `role` field separates them
 - `password` required for all users — no Google OAuth
-- `refreshToken` stored here — set to null on logout to invalidate session
+- `refreshToken` stored here — set to null on logout to invalidate session, `select: false` prevents leaking in responses
 - Owner-only fields are null/undefined for customers and admins
 - `averageRating` is denormalized — recalculate on every new review
+- `passwordResetOTP` stores a **bcrypt hashed** version of the OTP — never store plain OTP
+- `passwordResetOTPExpiry` set to `Date.now() + 10 minutes` on OTP generation — checked before verifying OTP
+- `passwordResetVerified` prevents password reset without first verifying OTP — set to true after OTP verified, cleared after password reset
 
 ---
 
@@ -573,9 +607,27 @@ categories
 - POST `/auth/login` — verify password, return access + refresh tokens
 - POST `/auth/refresh` — validate refresh token, rotate token, return new access token
 - POST `/auth/logout` — clear refresh token from DB and cookie
+- POST `/auth/forgot-password` — validate email, generate OTP, hash OTP, save to DB, send email
+- POST `/auth/reset-password` — verify OTP, check expiry, update password, clear OTP fields
 - Auth middleware — verify JWT access token, attach user to request
 - Role guard middleware — `allowRoles("admin")`, `allowRoles("owner")` etc.
-- Strict rate limiter on `/auth/login` and `/auth/register` (10 req / 15 min)
+- Strict rate limiter on `/auth/login`, `/auth/register`, `/auth/forgot-password` (10 req / 15 min)
+
+**New utility needed:**
+```
+utils/sendEmail.js   ← nodemailer setup, exports sendOTPEmail(to, otp)
+```
+
+**New env vars needed:**
+```
+EMAIL_USER=yourgmail@gmail.com
+EMAIL_PASS=your_gmail_app_password
+```
+
+**Gmail App Password setup:**
+1. Enable 2FA on Gmail account
+2. Google Account → Security → App Passwords
+3. Generate one for "Mail" — use this as EMAIL_PASS, not your real Gmail password
 
 ### Phase 4 — Categories & Listings
 
@@ -654,26 +706,28 @@ categories
 
 ## 📌 Key Technical Concepts to Know
 
-| Concept                     | Where It's Used                                 |
-| --------------------------- | ----------------------------------------------- |
-| JWT access + refresh tokens | Auth flow                                       |
-| bcrypt                      | Password hashing                                |
-| Refresh token rotation      | Detects stolen tokens, forces logout on reuse   |
-| IDOR protection             | Ownership check on every findById route         |
-| Stripe Payment Intents      | Rental payment                                  |
-| `capture_method: manual`    | Deposit hold                                    |
-| Stripe Connect + Transfers  | Owner payouts                                   |
-| Stripe webhook verification | Prevents spoofed payment events                 |
-| Cloudinary                  | File storage — images uploaded here, URL in DB  |
-| multer                      | File upload middleware — type + size validation |
-| Denormalization             | averageRating on users + listings               |
-| Price snapshot              | Rental booking — freeze prices at booking time  |
-| node-cron                   | Notification archiving background job           |
-| Role-based middleware       | Protecting routes per role                      |
-| blockedDates array          | Listing availability tracking                   |
-| updateMany                  | Mark all notifications as read                  |
-| express-mongo-sanitize      | Strips MongoDB operators from request body      |
-| helmet                      | Sets secure HTTP headers automatically          |
+| Concept                     | Where It's Used                                  |
+| --------------------------- | ------------------------------------------------ |
+| JWT access + refresh tokens | Auth flow                                        |
+| bcrypt                      | Password hashing + OTP hashing                   |
+| Refresh token rotation      | Detects stolen tokens, forces logout on reuse    |
+| nodemailer                  | Sends OTP email for forgot password flow         |
+| OTP expiry check            | Date.now() > passwordResetOTPExpiry → reject     |
+| IDOR protection             | Ownership check on every findById route          |
+| Stripe Payment Intents      | Rental payment                                   |
+| `capture_method: manual`    | Deposit hold                                     |
+| Stripe Connect + Transfers  | Owner payouts                                    |
+| Stripe webhook verification | Prevents spoofed payment events                  |
+| Cloudinary                  | File storage — images uploaded here, URL in DB   |
+| multer                      | File upload middleware — type + size validation  |
+| Denormalization             | averageRating on users + listings                |
+| Price snapshot              | Rental booking — freeze prices at booking time   |
+| node-cron                   | Notification archiving background job            |
+| Role-based middleware       | Protecting routes per role                       |
+| blockedDates array          | Listing availability tracking                    |
+| updateMany                  | Mark all notifications as read                   |
+| express-mongo-sanitize      | Strips MongoDB operators from request body       |
+| helmet                      | Sets secure HTTP headers automatically           |
 
 ---
 

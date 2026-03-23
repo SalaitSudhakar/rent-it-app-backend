@@ -10,6 +10,8 @@ const requiredEnvVariables = [
   "STRIPE_WEBHOOK_SECRET",
   "STRIPE_COMMISSION_RATE",
   "CLIENT_URL",
+  "EMAIL_USER",
+  "EMAIL_PASS"
 ];
 
 export default function validateEnvVariables() {

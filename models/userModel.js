@@ -95,6 +95,22 @@ const userSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+
+    passwordResetOTP: {
+      type: String,
+      default: null,
+      select: false,
+    },
+
+    passwordResetOTPExpiry: {
+      type: Date,
+      default: null,
+    },
+
+    passwordResetVerified: {
+      type: Boolean,
+      default: false,
+    },
   },
   { timestamps: true },
 );

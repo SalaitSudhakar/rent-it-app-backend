@@ -8,7 +8,7 @@ import corsOptions from "./config/corsConfig.js";
 import limiter from "./config/rateLimitConfig.js";
 import authRoute from "./routes/authRoute.js"
 import {notFoundHandler, globalErrorHandler} from "./middleware/errorMiddleware.js"
-import sanitizeMiddleware from "./middleware/sanitizeMiddleware.js";
+import expressMongoSanitize from "@exortek/express-mongo-sanitize";
 
 const app = express();
 
@@ -28,7 +28,7 @@ app.use(express.json());
 app.use(cookieParser());
 
 // sanitize (remove $ and . which could be a db query)
-app.use(sanitizeMiddleware);
+app.use(expressMongoSanitize())
 
 app.get("/", (req, res) => {
   res.json({ success: true, message: "Server is running" });

@@ -91,10 +91,8 @@ export const resetPasswordValidator = [
     .trim()
     .notEmpty()
     .withMessage("OTP is required")
-    .isLength({ min: 6, max: 6 })
-    .withMessage("OTP must be 6 digits")
-    .isNumeric()
-    .withMessage("OTP must contain only numbers"),
+    .matches(/^\d{6}$/)
+    .withMessage("OTP must be exactly 6 digits"),
 
   body("newPassword")
     .trim()

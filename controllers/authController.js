@@ -219,7 +219,7 @@ export const resetPassword = async (req, res, next) => {
 
     await user.save();
 
-    res.status(200).json({ message: "password verified Successfully" });
+    return res.status(200).json({ message: "password reset Successful" });
   } catch (error) {
     next(error);
   }

@@ -3,7 +3,7 @@ import AppError from "../utils/appError.js";
 
 const JWT_ACCESS_SECRET = process.env.JWT_ACCESS_SECRET;
 
-export const verifyToken = (req, res, next) => {
+const verifyToken = (req, res, next) => {
   const authorizationHeader = req.headers["authorization"];
 
   if (
@@ -29,3 +29,5 @@ export const verifyToken = (req, res, next) => {
 
   next();
 };
+
+export default verifyToken;

@@ -4,8 +4,10 @@ import {
   generateAccessToken,
   generateRefreshToken,
 } from "../utils/generateTokens.js";
+import jwt from "jsonwebtoken";
 import AppError from "../utils/appError.js";
 import sendAuthResponse from "../utils/sendAuthUserResponse.js";
+import cookieConfig from "../config/cookieConfig.js";
 
 export const register = async (req, res, next) => {
   try {
@@ -36,7 +38,7 @@ export const register = async (req, res, next) => {
       accessToken,
       refreshToken,
       "User Registered Successfully",
-      201
+      201,
     );
   } catch (error) {
     next(error);
@@ -49,7 +51,7 @@ export const login = async (req, res, next) => {
     const { email, password } = req.body;
 
     const user = await User.findOne({ email }).select(
-      "+password +refreshToken"
+      "+password +refreshToken",
     );
 
     if (!user) {
@@ -74,8 +76,83 @@ export const login = async (req, res, next) => {
       accessToken,
       refreshToken,
       "User Logged in successfully",
-      200
+      200,
     );
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Refresh
+export const refreshToken = async (req, res, next) => {
+  try {
+    const refreshToken = req.cookies?.refreshToken;
+
+    if (!refreshToken) return next(new AppError("Unauthorized", 401));
+
+    // 1. Verify token
+    let decoded;
+    try {
+      decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
+    } catch (err) {
+      return next(new AppError("Invalid or expired token", 401));
+    }
+
+    // 2. Find user
+    const user = await User.findById(decoded.sub).select("+refreshToken");
+    if (!user || !user.refreshToken)
+      return next(new AppError("Unauthorized", 401));
+
+    // 3. Match refresh token with DB
+    if (user.refreshToken !== refreshToken) {
+      user.refreshToken = null;
+      await user.save();
+
+      return next(new AppError("session expired. Please login again", 401));
+    }
+
+    // Generate access Token
+    const newAccessToken = generateAccessToken(user._id, user.role);
+    const newRefreshToken = generateRefreshToken(user._id);
+
+    user.refreshToken = newRefreshToken;
+    await user.save();
+
+    return res
+      .status(200)
+      .cookie("refreshToken", newRefreshToken, cookieConfig)
+      .json({
+        accessToken: newAccessToken,
+      });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// logout
+export const logout = async (req, res, next) => {
+  try {
+    const refreshToken = req.cookies?.refreshToken;
+
+    if (!refreshToken) {
+      return res.status(200).json({
+        message: "Logged out successfully",
+      });
+    }
+
+    const user = await User.findOne({ refreshToken }).select(
+      "+refreshToken",
+    );
+
+    if (user) {
+      user.refreshToken = null;
+      await user.save();
+    }
+
+    // clear cookies
+    return res
+      .clearCookie("refreshToken")
+      .json({ message: "User logged out successfully" });
   } catch (error) {
     next(error);
   }

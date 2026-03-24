@@ -19,13 +19,7 @@ import validateData from "../middleware/validate.js";
 
 const route = express.Router();
 
-route.post(
-  "/register",
-  authLimiter,
-  registerValidator,
-  validateData,
-  register,
-);
+route.post("/register", authLimiter, registerValidator, validateData, register);
 route.post("/login", authLimiter, loginValidator, validateData, login);
 route.post("/refresh", refreshToken);
 route.post("/logout", verifyToken, logout);

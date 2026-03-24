@@ -140,7 +140,7 @@ export const logout = async (req, res, next) => {
 
     if (!refreshToken) {
       return res.status(200).json({
-        message: "Logged out successfully",
+        message: "user Logged out successfully",
       });
     }
 

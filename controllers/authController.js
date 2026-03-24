@@ -6,7 +6,7 @@ import {
 } from "../utils/generateTokens.js";
 import jwt from "jsonwebtoken";
 import AppError from "../utils/appError.js";
-import sendAuthResponse from "../utils/sendAuthUserResponse.js";
+import sendAuthResponse from "../utils/sendAuthResponse.js";
 import cookieConfig from "../config/cookieConfig.js";
 import sendEmail from "../utils/sendEmail.js";
 import { reset_password_otp_template } from "../utils/emailTemplates.js";

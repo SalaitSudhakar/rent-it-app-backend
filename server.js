@@ -3,12 +3,12 @@ import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import helmet from "helmet";
-import ExpressMongoSanitize from "express-mongo-sanitize";
 import connectDB from "./config/databaseConfig.js";
 import corsOptions from "./config/corsConfig.js";
 import limiter from "./config/rateLimitConfig.js";
 import authRoute from "./routes/authRoute.js"
 import {notFoundHandler, globalErrorHandler} from "./middleware/errorMiddleware.js"
+import sanitizeMiddleware from "./middleware/sanitizeMiddleware.js";
 
 const app = express();
 
@@ -27,15 +27,15 @@ app.use(express.json());
 // cookie parser to handle cookies
 app.use(cookieParser());
 
-// sanitize
-app.use(ExpressMongoSanitize());
+// sanitize (remove $ and . which could be a db query)
+app.use(sanitizeMiddleware);
 
 app.get("/", (req, res) => {
   res.json({ success: true, message: "Server is running" });
 });
 
 // Routes
-app.use("/api/v1/auth", authRoute)
+app.use("/api/auth", authRoute)
 
 // Not found error handler
 app.use(notFoundHandler)

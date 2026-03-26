@@ -191,7 +191,7 @@ Is OTP expired? → Date.now() > passwordResetOTPExpiry → 400
 bcrypt.compare(submittedOTP, user.passwordResetOTP) → no match → 400
         ↓
 Update password → pre-save hook hashes it automatically
-Clear OTP fields → set all three to null/false
+Clear OTP fields → set passwordResetOTP and passwordResetOTPExpiry to null
         ↓
 Return 200 → "Password reset successful"
 ```
@@ -296,7 +296,6 @@ users
 ├── totalEarnings           (Number, default: 0 — owners only)
 ├── passwordResetOTP        (String, nullable — bcrypt hashed OTP, select: false)
 ├── passwordResetOTPExpiry  (Date, nullable — OTP expires after 10 minutes)
-├── passwordResetVerified   (Boolean, default: false — true after OTP verified)
 └── timestamps              (createdAt, updatedAt — Mongoose auto)
 ```
 
@@ -318,7 +317,7 @@ users
 ```
 categories
 ├── name        (String, required, unique)
-├── icon        (String, URL or icon class name)
+├── icon        (String, a CSS icon class name (e.g. fa-car, lucide-home) — plain string, no file upload needed)
 ├── isActive    (Boolean, default: true)
 └── timestamps  (createdAt, updatedAt)
 ```
@@ -594,7 +593,7 @@ categories
   3. `globalRateLimiter` — throttle all routes
   4. `express.json()` — parse request body
   5. `cookieParser()` — parse cookies (required for HttpOnly refresh token)
-  6. `mongoSanitize()` — strip `$` operators after body is parsed
+  6. `mongoSanitize()` — strip `$` operators after body is parsed (@exortek/express-mongo-sanitize — Express 5 compatible)
 
 ### Phase 2 — Database Models
 
@@ -614,24 +613,36 @@ categories
 - Strict rate limiter on `/auth/login`, `/auth/register`, `/auth/forgot-password` (10 req / 15 min)
 
 **New utility needed:**
+
 ```
-utils/sendEmail.js   ← nodemailer setup, exports sendOTPEmail(to, otp)
+utils/sendEmail.js ← exports generic sendEmail({ to, subject, html })
 ```
 
 **New env vars needed:**
+
 ```
 EMAIL_USER=yourgmail@gmail.com
 EMAIL_PASS=your_gmail_app_password
 ```
 
 **Gmail App Password setup:**
+
 1. Enable 2FA on Gmail account
 2. Google Account → Security → App Passwords
 3. Generate one for "Mail" — use this as EMAIL_PASS, not your real Gmail password
 
+**Route middleware order:**
+verifyToken → allowRoles → validators → validateData → controller
+
 ### Phase 4 — Categories & Listings
 
-- CRUD for categories (admin only)
+- **CRUD for categories (admin only):**
+  - GET /api/category → public, no auth, active categories only
+  - GET /api/category/admin → admin only, all categories, optional ?status=active|inactive filter
+  - POST /api/category → admin only, create
+  - PUT /api/category/:id → admin only, update name/icon
+  - PATCH /api/category/:id → admin only, toggle isActive
+
 - POST `/listings` — owner creates listing (status: pending)
 - GET `/listings` — public browse with filters (category, price, availability dates)
 - GET `/listings/:id` — single listing detail
@@ -706,28 +717,27 @@ EMAIL_PASS=your_gmail_app_password
 
 ## 📌 Key Technical Concepts to Know
 
-| Concept                     | Where It's Used                                  |
-| --------------------------- | ------------------------------------------------ |
-| JWT access + refresh tokens | Auth flow                                        |
-| bcrypt                      | Password hashing + OTP hashing                   |
-| Refresh token rotation      | Detects stolen tokens, forces logout on reuse    |
-| nodemailer                  | Sends OTP email for forgot password flow         |
-| OTP expiry check            | Date.now() > passwordResetOTPExpiry → reject     |
-| IDOR protection             | Ownership check on every findById route          |
-| Stripe Payment Intents      | Rental payment                                   |
-| `capture_method: manual`    | Deposit hold                                     |
-| Stripe Connect + Transfers  | Owner payouts                                    |
-| Stripe webhook verification | Prevents spoofed payment events                  |
-| Cloudinary                  | File storage — images uploaded here, URL in DB   |
-| multer                      | File upload middleware — type + size validation  |
-| Denormalization             | averageRating on users + listings                |
-| Price snapshot              | Rental booking — freeze prices at booking time   |
-| node-cron                   | Notification archiving background job            |
-| Role-based middleware       | Protecting routes per role                       |
-| blockedDates array          | Listing availability tracking                    |
-| updateMany                  | Mark all notifications as read                   |
-| express-mongo-sanitize      | Strips MongoDB operators from request body       |
-| helmet                      | Sets secure HTTP headers automatically           |
+| Concept                     | Where It's Used                                                |
+| --------------------------- | -------------------------------------------------------------- | ----------------------------------------------------------------- |
+| JWT access + refresh tokens | Auth flow                                                      |
+| bcrypt                      | Password hashing + OTP hashing                                 |
+| Refresh token rotation      | Detects stolen tokens, forces logout on reuse                  |
+| nodemailer                  | Sends OTP email for forgot password flow                       |
+| OTP expiry check            | Date.now() > passwordResetOTPExpiry → reject                   |
+| IDOR protection             | Ownership check on every findById route                        |
+| Stripe Payment Intents      | Rental payment                                                 |
+| `capture_method: manual`    | Deposit hold                                                   |
+| Stripe Connect + Transfers  | Owner payouts                                                  |
+| Stripe webhook verification | Prevents spoofed payment events                                |
+| Cloudinary                  | File storage — images uploaded here, URL in DB                 |
+| multer                      | File upload middleware — type + size validation                |
+| Denormalization             | averageRating on users + listings                              |
+| Price snapshot              | Rental booking — freeze prices at booking time                 |
+| node-cron                   | Notification archiving background job                          |
+| Role-based middleware       | Protecting routes per role                                     |
+| blockedDates array          | Listing availability tracking                                  |
+| updateMany                  | Mark all notifications as read @exortek/express-mongo-sanitize | Strips MongoDB operators from request body (Express 5 compatible) |
+| helmet                      | Sets secure HTTP headers automatically                         |
 
 ---
 

@@ -1,6 +1,6 @@
 import AppError from "../utils/appError.js";
 
-export const allowRoles = (...allowedRoles) => {
+const allowRoles = (...allowedRoles) => {
   return (req, res, next) => {
     if (!allowedRoles.includes(req.user.role)) {
       return next(new AppError("You are not authorized", 403));
@@ -9,3 +9,5 @@ export const allowRoles = (...allowedRoles) => {
     next();
   };
 };
+
+export default allowRoles;

@@ -14,7 +14,7 @@ import generateOTP from "../utils/generateOTP.js";
 
 export const register = async (req, res, next) => {
   try {
-    const { name, email, password, phone = "" } = req.body;
+    const { name, email, password, phone } = req.body;
 
     const existingUser = await User.findOne({ email });
 
@@ -26,7 +26,7 @@ export const register = async (req, res, next) => {
       name,
       email,
       password,
-      ...(phone && { phone }),
+      ...(phone !== undefined && { phone }),
     });
 
     const accessToken = generateAccessToken(newUser._id, newUser.role);

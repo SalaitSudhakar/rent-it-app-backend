@@ -6,9 +6,13 @@ import helmet from "helmet";
 import connectDB from "./config/databaseConfig.js";
 import corsOptions from "./config/corsConfig.js";
 import limiter from "./config/rateLimitConfig.js";
-import authRoute from "./routes/authRoute.js"
-import {notFoundHandler, globalErrorHandler} from "./middleware/errorMiddleware.js"
 import expressMongoSanitize from "@exortek/express-mongo-sanitize";
+import {
+  notFoundHandler,
+  globalErrorHandler,
+} from "./middleware/errorMiddleware.js";
+import authRoute from "./routes/authRoute.js";
+import categoryRoute from "./routes/categoryRoute.js";
 
 const app = express();
 
@@ -28,17 +32,18 @@ app.use(express.json());
 app.use(cookieParser());
 
 // sanitize (remove $ and . which could be a db query)
-app.use(expressMongoSanitize())
+app.use(expressMongoSanitize());
 
 app.get("/", (req, res) => {
   res.json({ success: true, message: "Server is running" });
 });
 
 // Routes
-app.use("/api/auth", authRoute)
+app.use("/api/auth", authRoute); //auth
+app.use("/api/category", categoryRoute); //category
 
 // Not found error handler
-app.use(notFoundHandler)
+app.use(notFoundHandler);
 
 // Global error handler
 app.use(globalErrorHandler);
